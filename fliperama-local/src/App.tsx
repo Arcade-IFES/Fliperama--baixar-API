@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react' //É um hook do react que permite adicionar estado a componentes funcionais
-// Ele armazena um valor e fornece uma função para atualizá-lo, garantindo que o React saiba quando re-renderizar o componente
+import { useState, useEffect } from 'react'
 
 import Atracao from './pages/Atracao/Atracao'
 import Identificacao from './pages/Identificacao/Identificacao'
@@ -7,17 +6,15 @@ import Jogos from './pages/Jogos/Jogos'
 import Jogo from './pages/Jogo/Jogo'
 import Resultado from './pages/Resultado/Resultado'
 import type { Jogo as TipoJogo } from './types/Jogo'
-import { verificarServidorLocal } from './service/apiLocal'
-import { enviarResultado } from './service/apiLocal'
+import { enviarResultado, verificarServidorLocal } from './service/apiLocal'
+import { Manage } from './pages/Manage/Manage'
 
 
-function App() { 
-  const [tela, setTela] = useState('atracao') 
-
-  const [matricula, setMatricula] = useState('') 
-  const [apelido, setApelido] = useState('') 
+function App() {
+  const [tela, setTela] = useState('atracao')
   const [jogoSelecionado, setJogoSelecionado] = useState<TipoJogo | null>(null)
   const [pontuacao, setPontuacao] = useState<number | null>(null)
+  const [avaliacao, setAvaliacao] = useState<number | null>(null)
 
   useEffect(() => {
     async function testarServidor() {
@@ -32,14 +29,17 @@ function App() {
     testarServidor()
   }, [])
 
-  function IdentificarJogador(NovaMatricula:string, NovoApelido:string) {
-      setMatricula(NovaMatricula)
-      setApelido(NovoApelido)
-      setTela('jogos') 
+  function voltarInicio() {
+    setJogoSelecionado(null)
+    setPontuacao(null)
+    setAvaliacao(null)
+    setTela('atracao')
   }
 
   function SelecionarJogo(jogo: TipoJogo) {
     setJogoSelecionado(jogo)
+    setPontuacao(null)
+    setAvaliacao(null)
     setTela('jogo')
   }
 
@@ -48,9 +48,14 @@ function App() {
     setTela('resultado')
   }
 
-  async function confirmarAvaliacao(avaliacao: number) {
-    if (!jogoSelecionado || pontuacao === null) {
-      return
+  function confirmarAvaliacao(nota: number) {
+    setAvaliacao(nota)
+    setTela('identificacao')
+  }
+
+  async function IdentificarJogador(matricula: string, apelido: string) {
+    if (!jogoSelecionado || pontuacao === null || avaliacao === null) {
+      throw new Error('Partida não encontrada')
     }
 
     const resultadoPartida = {
@@ -61,19 +66,16 @@ function App() {
       avaliacao,
     }
 
-    try {
-      const resposta = await enviarResultado(resultadoPartida)
-
-      console.log('Resultado salvo:', resposta)
-    } catch (erro) {
-      console.error('Erro ao salvar resultado:', erro)
-    }
+    await enviarResultado(resultadoPartida)
+    voltarInicio()
+  }
+  if (window.location.pathname === '/manage') {
+      return <Manage />
   }
 
-  // OnContinuar é uma função que será passada como prop para o componente Atracao. Está em Atracao.tsx 
   if (tela === 'atracao') {
     return (<Atracao 
-        onContinuar={() => setTela('identificacao')}
+        onContinuar={() => setTela('jogos')}
     />)
   }
 
@@ -86,7 +88,6 @@ function App() {
   if (tela === 'jogos') {
     return (
       <Jogos
-        apelido={apelido}
         onSelecionarJogo={SelecionarJogo}
       />
   )}
@@ -96,6 +97,7 @@ function App() {
       <Jogo
         jogo={jogoSelecionado}
         onFinalizar={FinalizarJogo}
+        onVoltarInicio={voltarInicio}
       />
     )
   }
@@ -107,6 +109,7 @@ function App() {
       />
     )
   }
+  
   return null 
 }
 

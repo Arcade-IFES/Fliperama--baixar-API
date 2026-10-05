@@ -1,40 +1,94 @@
+import AdmZip from 'adm-zip'
+import { mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { salvarCatalogo } from './catalogoService'
+import { adaptarArquivoDoJogo } from './adaptacaoJogosService'
 
-// mock é uma versão falsa/simulada de alguma parte do sistema que ainda não está pronta.
-// futuramente API real do G1
-
-const jogosAprovadosMock = [
+const JOGOS = [
   {
-    id: 1,
-    nome: 'Quiz de Biologia',
-    autores: 'João e Maria',
-    caminho: '/jogos/jogo_teste/index.html',
+    id: 'orbita-do-saber',
+    nome: 'Órbita do Saber',
+    autores: 'Grupo do Órbita do Saber',
+    repositorio: 'https://github.com/Arcade-IFES/Orbita-do-Saber',
+    arquivoInicial: 'orbita-do-saber.html',
   },
   {
-    id: 2,
-    nome: 'Desafio Matemático',
-    autores: 'Pedro e Ana',
-    caminho: '/jogos/jogo_teste/index.html',
+    id: 'logica-em-dungeon',
+    nome: 'Logic Dungeon',
+    autores: 'Grupo Logic Dungeon',
+    repositorio: 'https://github.com/Arcade-IFES/-Logic-Dungeon-',
+    arquivoInicial: 'logic_dungeon.html',
   },
   {
-    id: 3,
-    nome: 'História Arcade',
-    autores: 'Carlos e Julia',
-    caminho: '/jogos/jogo_teste/index.html',
+    id: 'corrida-contra-o-sino',
+    nome: 'Corrida Contra o Sino',
+    autores: 'Grupo Corrida Contra o Sino',
+    repositorio: 'https://github.com/Arcade-IFES/Corrida-Contra-o-Sino',
+    arquivoInicial: 'corrida-contra-o-sino.html',
   },
 ]
 
+const PASTA_JOGOS = './data/jogos'
+
 export async function sincronizarJogos() {
-  console.log('Iniciando sincronização...')
+  await mkdir(PASTA_JOGOS, {
+    recursive: true,
+  })
 
-  // Temporariamente representa a resposta da API do G1.
-  const jogosAprovados = jogosAprovadosMock
+  // Atualiza também o cache existente, mesmo se o download falhar sem internet.
+  for (const jogo of JOGOS) {
+    const nomeRepositorio = jogo.repositorio.split('/').pop()
+    try {
+      await adaptarArquivoDoJogo(
+        path.join(PASTA_JOGOS, `${nomeRepositorio}-main`, jogo.arquivoInicial),
+        jogo.id,
+      )
+    } catch (erro) {
+      if ((erro as NodeJS.ErrnoException).code !== 'ENOENT') throw erro
+    }
+  }
 
-  await salvarCatalogo(jogosAprovados)
+  const catalogo = []
 
-  console.log(
-    `${jogosAprovados.length} jogos sincronizados.`
-  )
+  for (const jogo of JOGOS) {
+    console.log(`Baixando ${jogo.nome}...`)
 
-  return jogosAprovados
+    const urlZip =
+      `${jogo.repositorio}/archive/refs/heads/main.zip`
+
+    const resposta = await fetch(urlZip)
+
+    if (!resposta.ok) {
+      throw new Error(
+        `Erro ao baixar ${jogo.nome}: ${resposta.status}`
+      )
+    }
+
+    const arrayBuffer = await resposta.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    const zip = new AdmZip(buffer)
+
+    zip.extractAllTo(PASTA_JOGOS, true)
+
+    const nomeRepositorio = jogo.repositorio.split('/').pop()
+
+    await adaptarArquivoDoJogo(
+      path.join(PASTA_JOGOS, `${nomeRepositorio}-main`, jogo.arquivoInicial),
+      jogo.id,
+    )
+
+    catalogo.push({
+      id: jogo.id,
+      nome: jogo.nome,
+      autores: jogo.autores,
+      caminho:
+        `http://localhost:3000/arquivos-jogos/${nomeRepositorio}-main/${jogo.arquivoInicial}`,
+    })
+
+    console.log(`${jogo.nome} baixado com sucesso.`)
+  }
+  await salvarCatalogo(catalogo)
+
+  return catalogo
 }
